@@ -15,11 +15,13 @@ Ephemeris ingress book: one landscape PDF page per year.
 Dates are UT, tropical zodiac, built-in Moshier ephemeris (no data files needed).
 
 Setup :  pip install pyswisseph reportlab
+GUI   :  python ephemeris_book.py
 Test  :  python ephemeris_book.py 2026 2026     (one page, a few seconds)
-Full  :  python ephemeris_book.py               (1926-2126, a few minutes)
+Full  :  python ephemeris_book.py 1926 2126     (a few minutes)
 """
 import sys
 import datetime
+import threading
 from collections import defaultdict
 from pathlib import Path
 
@@ -310,10 +312,8 @@ def draw_page(c, year, cells, jan1):
     c.showPage()
 
 
-def main():
-    start, end = START_YEAR, END_YEAR
-    if len(sys.argv) == 3:
-        start, end = int(sys.argv[1]), int(sys.argv[2])
+def generate_book(start, end):
+    """Generate an ephemeris PDF and return its path."""
     output_dir = Path(__file__).resolve().parent / "Test outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"ephemeris_{start}_{end}.pdf"
@@ -328,6 +328,88 @@ def main():
         draw_page(c, year, cells, jan1)
     c.save()
     print(f"Done: {out}")
+    return out
+
+
+def run_gui():
+    """Show a small desktop form for choosing the year range."""
+    import tkinter as tk
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.title("Ephemeris Book Generator")
+    root.resizable(False, False)
+
+    frame = tk.Frame(root, padx=18, pady=18)
+    frame.grid()
+
+    tk.Label(frame, text="Start year:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+    start_entry = tk.Entry(frame, width=12)
+    start_entry.insert(0, str(START_YEAR))
+    start_entry.grid(row=0, column=1, padx=5, pady=5)
+
+    tk.Label(frame, text="End year:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+    end_entry = tk.Entry(frame, width=12)
+    end_entry.insert(0, str(END_YEAR))
+    end_entry.grid(row=1, column=1, padx=5, pady=5)
+
+    status = tk.StringVar(value="Choose a year range, then click Generate.")
+    status_label = tk.Label(frame, textvariable=status, wraplength=320, justify="left")
+    status_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(12, 0))
+
+    def generation_finished(out=None, error=None):
+        generate_button.config(state="normal")
+        if error is not None:
+            status.set("Generation failed.")
+            messagebox.showerror("Generation failed", str(error))
+        else:
+            status.set(f"Done: {out}")
+            messagebox.showinfo("PDF generated", f"Saved to:\n{out}")
+
+    def generate_clicked():
+        try:
+            start = int(start_entry.get().strip())
+            end = int(end_entry.get().strip())
+            if start > end:
+                raise ValueError("Start year must be less than or equal to end year.")
+        except ValueError as exc:
+            message = str(exc) if str(exc) else "Enter valid whole-number years."
+            messagebox.showerror("Invalid years", message)
+            return
+
+        generate_button.config(state="disabled")
+        status.set(f"Generating {start}-{end}... This may take a few minutes.")
+
+        def worker():
+            try:
+                out = generate_book(start, end)
+            except Exception as exc:
+                root.after(0, generation_finished, None, exc)
+            else:
+                root.after(0, generation_finished, out, None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    generate_button = tk.Button(frame, text="Generate", width=18, command=generate_clicked)
+    generate_button.grid(row=2, column=0, columnspan=2, pady=(12, 0))
+
+    start_entry.focus_set()
+    root.mainloop()
+
+
+def main():
+    if len(sys.argv) == 1:
+        run_gui()
+    elif len(sys.argv) == 3:
+        try:
+            start, end = int(sys.argv[1]), int(sys.argv[2])
+        except ValueError:
+            sys.exit("Start and end years must be whole numbers.")
+        if start > end:
+            sys.exit("Start year must be less than or equal to end year.")
+        generate_book(start, end)
+    else:
+        sys.exit("Usage: python ephemeris_book.py [START_YEAR END_YEAR]")
 
 
 if __name__ == "__main__":
