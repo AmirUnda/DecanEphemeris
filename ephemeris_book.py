@@ -21,6 +21,7 @@ Full  :  python ephemeris_book.py               (1926-2126, a few minutes)
 import sys
 import datetime
 from collections import defaultdict
+from pathlib import Path
 
 try:
     import swisseph as swe
@@ -313,13 +314,15 @@ def main():
     start, end = START_YEAR, END_YEAR
     if len(sys.argv) == 3:
         start, end = int(sys.argv[1]), int(sys.argv[2])
-    out = f"ephemeris_{start}_{end}.pdf"
+    output_dir = Path(__file__).resolve().parent / "Test outputs"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out = output_dir / f"ephemeris_{start}_{end}.pdf"
 
     print(f"Scanning {start}-{end} ({end - start + 1} pages)...")
     cells = scan(start, end)
     jan1 = signs_on_jan1(start, end)
 
-    c = canvas.Canvas(out, pagesize=PAGE_SIZE)
+    c = canvas.Canvas(str(out), pagesize=PAGE_SIZE)
     c.setTitle(f"Ephemeris ingress book {start}-{end}")
     for year in range(start, end + 1):
         draw_page(c, year, cells, jan1)
